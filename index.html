@@ -227,14 +227,26 @@ body{
 
 .spark{position:fixed;width:5px;height:5px;border-radius:50%;background:var(--gold-bright);pointer-events:none;z-index:60}
 
+/* golden confetti layer */
+#confetti{
+  position:fixed;inset:0;width:100%;height:100%;
+  pointer-events:none;z-index:80;display:none;
+}
+
 /* ── mobile: stack, with its own type scale ─────────── */
 @media (max-width:820px){
   .split{grid-template-columns:1fr;min-height:0}
 
-  .photo{height:auto;aspect-ratio:4/3;max-height:min(40vh,272px)}
-  .photo picture{position:relative;inset:auto;height:100%}
-  .photo img{position:absolute;object-position:50% 30%}
-  .photo::after{background:linear-gradient(180deg,rgba(7,8,10,.3) 0%,transparent 26%,transparent 52%,rgba(7,8,10,.97) 100%)}
+  /* the photo now grows with the screen instead of a fixed 4:3 box.
+     62svh leaves the top of the invitation just peeking, which is
+     what tells people there's more below. */
+  .photo{
+    height:62vh;height:62svh;min-height:290px;max-height:660px;
+    aspect-ratio:auto;
+  }
+  .photo picture{position:absolute;inset:auto;top:0;left:0;right:0;bottom:0;height:100%}
+  .photo img{position:absolute;object-position:50% 46%}
+  .photo::after{background:linear-gradient(180deg,rgba(7,8,10,.3) 0%,transparent 26%,transparent 58%,rgba(7,8,10,.97) 100%)}
   .photo-cap{font-size:10.5px;letter-spacing:.3em;bottom:1rem}
 
   .panel{
@@ -274,7 +286,7 @@ body{
 
 /* short phones: give the panel the room instead of the photo */
 @media (max-width:820px) and (max-height:730px){
-  .photo{max-height:34vh}
+  .photo{height:56vh;height:56svh;min-height:250px}
   .panel{gap:.85rem;padding-top:1.2rem}
   .name{font-size:clamp(1.9rem,10vw,3rem)}
 }
@@ -383,6 +395,8 @@ body{
   </div>
 </div>
 
+<canvas id="confetti" aria-hidden="true"></canvas>
+
 <script>
 /* ═══════════════════════════════════════════════════════════════
    CONFIG
@@ -442,6 +456,65 @@ function sparks(el){
   }
 }
 
+/* ── golden confetti ──────────────────────────────────────
+   Falls across the whole screen when someone says yes.
+   ───────────────────────────────────────────────────────── */
+function confetti(){
+  if(reduce) return;
+  const c = $("confetti"), ctx = c.getContext("2d");
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const W = c.width  = innerWidth  * dpr;
+  const H = c.height = innerHeight * dpr;
+  c.style.display = "block";
+
+  const golds = ["#D4A83C","#F4DE9E","#EFC75E","#FFF3CF","#B8891F"];
+  const count = innerWidth < 520 ? 100 : 180;
+  const bits  = [];
+
+  for(let i = 0; i < count; i++){
+    bits.push({
+      x: Math.random() * W,
+      y: -Math.random() * H * 0.8 - 20 * dpr,
+      w: (4 + Math.random() * 7) * dpr,
+      h: (8 + Math.random() * 13) * dpr,
+      vy: (2.2 + Math.random() * 3.6) * dpr,
+      vx: (Math.random() - .5) * 1.4 * dpr,
+      rot: Math.random() * Math.PI,
+      vr: (Math.random() - .5) * .24,
+      sway: Math.random() * Math.PI * 2,
+      col: golds[(Math.random() * golds.length) | 0]
+    });
+  }
+
+  const start = performance.now();
+  function frame(now){
+    const t = now - start;
+    ctx.clearRect(0, 0, W, H);
+    let onscreen = 0;
+
+    for(const b of bits){
+      b.sway += .05;
+      b.x += b.vx + Math.sin(b.sway) * .9 * dpr;
+      b.y += b.vy;
+      b.rot += b.vr;
+      if(b.y < H + 40 * dpr) onscreen++;
+
+      ctx.save();
+      ctx.globalAlpha = t > 4200 ? Math.max(0, 1 - (t - 4200) / 1500) : 1;
+      ctx.translate(b.x, b.y);
+      ctx.rotate(b.rot);
+      ctx.fillStyle = b.col;
+      // the flip on the vertical axis makes each piece feel like foil
+      ctx.fillRect(-b.w / 2, -b.h / 2, b.w, b.h * Math.abs(Math.cos(b.rot)) + 1);
+      ctx.restore();
+    }
+
+    if(t < 5800 && (onscreen || t < 2600)) requestAnimationFrame(frame);
+    else { ctx.clearRect(0, 0, W, H); c.style.display = "none"; }
+  }
+  requestAnimationFrame(frame);
+}
+
 function confirmView(name, coming, saved){
   $("doneTitle").textContent = coming ? "See you there." : "Thank you for telling me.";
   $("doneMsg").textContent = coming
@@ -457,6 +530,7 @@ function confirmView(name, coming, saved){
 
   $("rsvp").classList.add("sent");
   sparks($("rsvp"));
+  if(coming) confetti();
 }
 
 async function submit(){
@@ -541,6 +615,7 @@ $("rNo").addEventListener("change", () => {
 });
 // picking yes resets it, so a change of heart still gets the joke
 $("rYes").addEventListener("change", () => {
+  sparks($("rYes").nextElementSibling);
   if(noWrap.classList.contains("caved")) return;
   tries = 0;
   noLabel.textContent = "Sorry, I can't";
